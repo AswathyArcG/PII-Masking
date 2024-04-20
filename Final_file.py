@@ -347,7 +347,7 @@ val_dataset = (
     .padded_batch(batch_size)
 )
 
-ner_model = NERModel(num_tags, vocab_size, embed_dim=32, num_heads=4, ff_dim=64)
+# ner_model = NERModel(num_tags, vocab_size, embed_dim=32, num_heads=4, ff_dim=64)
 
 
 # In[15]:
@@ -367,14 +367,14 @@ class CustomNonPaddingTokenLoss(keras.losses.Loss):
         return tf.reduce_sum(loss) / tf.reduce_sum(mask)
 
 
-loss = CustomNonPaddingTokenLoss()
+# loss = CustomNonPaddingTokenLoss()
 
 
 # In[16]:
 
 
-ner_model.compile(optimizer="adam", loss=loss)
-ner_model.fit(train_dataset, epochs=10)
+# ner_model.compile(optimizer="adam", loss=loss)
+# ner_model.fit(train_dataset, epochs=10)
 
 
 def tokenize_and_convert_to_ids(text):
@@ -383,18 +383,18 @@ def tokenize_and_convert_to_ids(text):
 
 
 # Sample inference using the trained model
-sample_input = tokenize_and_convert_to_ids(
-    "eu rejects german call to boycott british lamb"
-)
-sample_input = tf.reshape(sample_input, shape=[1, -1])
-print(sample_input)
+# sample_input = tokenize_and_convert_to_ids(
+#     "eu rejects german call to boycott british lamb"
+# )
+# sample_input = tf.reshape(sample_input, shape=[1, -1])
+# print(sample_input)
 
-output = ner_model.predict(sample_input)
-prediction = np.argmax(output, axis=-1)[0]
-prediction = [mapping[i] for i in prediction]
+# output = ner_model.predict(sample_input)
+# prediction = np.argmax(output, axis=-1)[0]
+# prediction = [mapping[i] for i in prediction]
 
 # eu -> B-ORG, german -> B-MISC, british -> B-MISC
-print(prediction)
+# print(prediction)
 
 
 # In[17]:
@@ -426,7 +426,7 @@ def calculate_metrics(_dataset):
     evaluate(real_tags, predicted_tags)
 
 
-calculate_metrics(val_dataset)
+# calculate_metrics(val_dataset)
 
 
 # In[18]:
@@ -450,7 +450,7 @@ def test_model_with_input(_ner_model, mapping):
     print("Predicted tags:", predicted_tags)
 
 # Test the model with user input
-test_model_with_input(ner_model, mapping)
+# test_model_with_input(ner_model, mapping)
 
 
 # In[20]:
@@ -693,7 +693,104 @@ class FlairRecognizer(EntityRecognizer):
             anonymized_text = "*" * len(entity_text)
             anonymized_sentence = anonymized_sentence.replace(entity_text, anonymized_text)
 
+        # remove the part that includes named entity annotations
+        anonymized_sentence = anonymized_sentence.split("→")[0].strip()
+        anonymized_sentence = anonymized_sentence.split(":")[1].strip()
+
+        a = anonymize(input_text, "", anonymized_sentence)
+        print("a sentence:")
+        print(a)
+
         # print anonymized sentence
         print("Anonymized sentence:")
         print(anonymized_sentence)
         return anonymized_sentence
+    
+
+
+
+
+
+
+
+
+
+from presidio_anonymizer import AnonymizerEngine
+from presidio_analyzer import AnalyzerEngine
+from presidio_anonymizer.entities import (
+    OperatorConfig,
+    RecognizerResult,
+    EngineResult,
+    ConflictResolutionStrategy,
+)
+from typing import List, Dict, Optional, Type
+
+
+class FlairRecognizer2():
+    
+    
+    def anonymize(
+        text: str,
+        operator: str,
+        # analyze_results: List[RecognizerResult],
+    ):
+        """Anonymize identified input using Presidio Anonymizer.
+        :param text: Full text
+        :param operator: Operator name
+        :param analyze_results: list of results from presidio analyzer engine
+        """
+
+        entitiesToRecognize=['UK_NHS','EMAIL','AU_ABN','CRYPTO','ID','URL',
+                             'AU_MEDICARE','IN_PAN','ORGANIZATION','IN_AADHAAR',
+                             'SG_NRIC_FIN','EMAIL_ADDRESS','AU_ACN','US_DRIVER_LICENSE',
+                             'IP_ADDRESS','DATE_TIME','LOCATION','PERSON','CREDIT_CARD',
+                             'IBAN_CODE','US_BANK_NUMBER','PHONE_NUMBER','MEDICAL_LICENSE',
+                             'US_SSN','AU_TFN','US_PASSPORT','US_ITIN','NRP','AGE','GENERIC_PII'
+                             ]
+        
+        operator_config = None
+        encrypt_key = "WmZq4t7w!z%C&F)J"
+
+        if operator == 'mask':
+            operator_config = {
+                "type": "mask",
+                "masking_char": "*",
+                "chars_to_mask": 10,
+                "from_end": False,
+            }
+        elif operator == "encrypt":
+            operator_config = {"key": encrypt_key}
+        elif operator == "highlight":
+            operator_config = {"lambda": lambda x: x}
+
+
+        if operator == "highlight":
+            operator = "custom"
+
+        analyzer = AnalyzerEngine()
+
+        results = analyzer.analyze(text=text, entities=entitiesToRecognize, language='en') # noqa D501
+        print("results:")
+        print(results)
+
+        engine = AnonymizerEngine()
+
+            # Invoke the anonymize function with the text, analyzer results and
+            # Operators to define the anonymization type.
+        result = engine.anonymize(
+            text=text,
+            operators={"DEFAULT": OperatorConfig(operator, operator_config)},
+            analyzer_results=results
+        )
+        print("res:")
+        print(result)
+        print(result.text)
+        print(type(result.text))
+
+
+        return result.text
+
+
+
+
+

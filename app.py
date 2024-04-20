@@ -1,5 +1,6 @@
 import streamlit as st
 from Final_file import FlairRecognizer
+from Final_file import FlairRecognizer2
 import os
 import PyPDF2
 import docx
@@ -7,6 +8,7 @@ import docx
 from fpdf import FPDF
 import io
 from docx import Document
+from PiiMaskingService import PiiMaskingService
 
 # Cache the model loading and prediction function
 @st.cache_resource
@@ -15,8 +17,16 @@ def cached_predict_ner_tags(text):
 
 # Cache the text analysis function
 @st.cache_resource
-def cached_analyze_text(text):
+def cached_analyze_text(text, operator):
     return FlairRecognizer.analyze_text(text)
+
+@st.cache_resource
+def cached_anonimize_text(text, operator):
+    return FlairRecognizer2.anonymize(text, operator)
+
+@st.cache_resource
+def anonymize(text, operator, model):
+    return PiiMaskingService().anonymize(text, operator, model)
 
 def download_masked_file(masked_text, file_extension):
     
@@ -66,16 +76,38 @@ def main():
     st.sidebar.header('Upload Options')
     upload_option = st.sidebar.radio("Choose upload option:", ('Text Input', 'File Upload'))
 
-    # # Dropdown menu with four choices
-    # st.sidebar.header('Masking Options')
-    # choice = st.sidebar.selectbox('Choose your masking option:', ['Option 1', 'Option 2', 'Option 3', 'Option 4'])
+    st_operator = st.sidebar.selectbox(
+        "De-identification approach",
+        ["redact", "replace", "encrypt", "hash", "mask"],
+        index=1,
+        help="""
+        Select which manipulation to the text is requested after PII has been identified.\n
+        - Redact: Completely remove the PII text\n
+        - Replace: Replace the PII text with a constant, e.g. <PERSON>\n
+        - Highlight: Shows the original text with PII highlighted in colors\n
+        - Mask: Replaces a requested number of characters with an asterisk (or other mask character)\n
+        - Hash: Replaces with the hash of the PII string\n
+        - Encrypt: Replaces with an AES encryption of the PII string, allowing the process to be reversed
+            """,
+    )
+
+    st_model = st.sidebar.selectbox(
+        "NER model package",
+        [
+            "flair/ner-english-large",
+            "HuggingFace/obi/deid_roberta_i2b2",
+        ],
+        index=0,
+    )
+    
     masked_text_public = ''
     if upload_option == 'Text Input':
         input_text = st.text_area("Enter text here:")
         if st.button('Analyze'):
             with st.spinner('Wait for it... the model is loading'):
-                cached_predict_ner_tags(input_text)
-                masked_text = cached_analyze_text(input_text)
+                # cached_predict_ner_tags(input_text)
+                masked_text = anonymize(input_text, st_operator, st_model)
+                # masked_text = cached_anonimize_text(input_text, st_operator)
             st.text_area("Masked text:", value=masked_text, height=200)
     elif upload_option == 'File Upload':
         uploaded_file = st.file_uploader("Upload a file", type=['txt', 'pdf', 'docx'])
@@ -86,8 +118,9 @@ def main():
                 extracted_text = extract_text_from_pdf(uploaded_file)
                 if st.button('Analyze'):
                     with st.spinner('Wait for it... the model is loading'):
-                        cached_predict_ner_tags(extracted_text)
-                        masked_text = cached_analyze_text(extracted_text)
+                        # cached_predict_ner_tags(extracted_text)
+                        masked_text = anonymize(extracted_text, st_operator, st_model)
+                        # masked_text = cached_analyze_text(extracted_text)
                     st.text_area("Masked text:", value=masked_text, height=200) # Display the extracted text
                     if extracted_text:
                         pdf = create_pdf(masked_text)
@@ -108,8 +141,9 @@ def main():
                     text += paragraph.text
                 if st.button('Analyze'):
                     with st.spinner('Wait for it... the model is loading'):
-                        cached_predict_ner_tags(text)
-                        masked_text = cached_analyze_text(text)
+                        # cached_predict_ner_tags(text)
+                        masked_text = anonymize(text, st_operator, st_model)
+                        # masked_text = cached_analyze_text(text)
                     st.text_area("Masked text:", value=masked_text, height=200)
                     #create word file
                     doc_io = create_word_file(masked_text)
@@ -118,8 +152,9 @@ def main():
             else:
                 if st.button('Analyze'):
                     with st.spinner('Wait for it... the model is loading'):
-                        cached_predict_ner_tags(file_contents.decode())
-                        masked_text = cached_analyze_text(file_contents.decode())
+                        # cached_predict_ner_tags(file_contents.decode())
+                        # masked_text = cached_analyze_text(file_contents.decode())
+                        masked_text = anonymize(file_contents.decode(), st_operator, st_model)
                     st.text_area("Masked text:", value=masked_text, height=200)
                     st.download_button(label="Download",data = masked_text,file_name="masked_text.txt")
 
